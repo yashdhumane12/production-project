@@ -1,0 +1,35 @@
+groups:
+  - name: taskmaster
+    rules:
+      - alert: AppDown
+        expr: up{job="taskmaster"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "TaskMaster is DOWN"
+          description: "App has been unreachable for > 1 minute"
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m])) > 0.05
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Error rate > 5%"
+          description: "{{ $value | humanizePercentage }} of requests are failing"
+
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        for: 3m
+        labels: {severity: warning}
+        annotations:
+          summary: "P95 latency > 1s"
+
+      - alert: DatabaseDown
+        expr: |
+          sum(rate(http_requests_total{endpoint="health",status="503"}[2m])) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Database connection failing"

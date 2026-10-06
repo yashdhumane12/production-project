@@ -1,0 +1,106 @@
+version: "3.8"
+
+networks:
+  prod-net:
+
+volumes:
+  pg_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: taskmaster-postgres
+    environment:
+      POSTGRES_DB: taskmaster
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [prod-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U appuser -d taskmaster"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: taskmaster-redis
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks: [prod-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 10s
+      retries: 3
+
+  app:
+    build: ./app
+    container_name: taskmaster-app
+    ports: ["8080:5000"]
+    environment:
+      POSTGRES_HOST:     postgres
+      POSTGRES_DB:       taskmaster
+      POSTGRES_USER:     appuser
+      POSTGRES_PASSWORD: secret
+      REDIS_HOST:        redis
+      CACHE_TTL:         "60"
+      APP_VERSION:       "local"
+      ENVIRONMENT:       "local"
+    networks: [prod-net]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis:    {condition: service_healthy}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: taskmaster-prometheus
+    ports: ["9090:9090"]
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks: [prod-net]
+    depends_on: [app]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: taskmaster-grafana
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks: [prod-net]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: taskmaster-alertmanager
+    ports: ["9093:9093"]
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks: [prod-net]
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: taskmaster-node-exporter
+    ports: ["9100:9100"]
+    networks: [prod-net]
+    restart: unless-stopped

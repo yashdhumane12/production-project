@@ -1,0 +1,50 @@
+replicaCount: 2
+
+image:
+  repository: your-dockerhub-username/taskmaster
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: taskmaster.local
+
+resources:
+  requests:
+    cpu:    100m
+    memory: 128Mi
+  limits:
+    cpu:    500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+env:
+  POSTGRES_HOST: postgres
+  POSTGRES_DB:   taskmaster
+  POSTGRES_USER: appuser
+  REDIS_HOST:    redis
+  CACHE_TTL:     "60"
+  ENVIRONMENT:   production
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 10Gi
+  database: taskmaster
+  user: appuser
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  maxmemory: 128mb

@@ -1,0 +1,6 @@
+flask==3.0.3
+psycopg2-binary==2.9.9
+redis==5.0.4
+gunicorn==22.0.0
+prometheus-client==0.20.0
+pytest==8.2.0
